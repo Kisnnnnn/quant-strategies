@@ -365,6 +365,8 @@ async function main() {
   // ── 3. 筛选候选 ──
   // 主升期扩大候选池（赵老哥：主升要敢上仓位），震荡期缩小
   const poolSize = emotion.phase === "main-up" ? 40 : emotion.phase === "offday" ? 30 : emotion.phase === "trial" ? 30 : 20;
+  // 按涨幅降序排列后再截取，避免高涨幅股因同花顺默认排序被漏掉
+  hotStocks.sort((a, b) => (b.changePct || 0) - (a.changePct || 0));
   const candidates = hotStocks.slice(0, poolSize);
   log(`3/5 逐只分析(${candidates.length}只, ${emotion.phaseLabel}模式)...`);
 
