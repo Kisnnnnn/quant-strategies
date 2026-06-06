@@ -1,0 +1,19 @@
+README.md
+  s_ee9ed32810b4c5::t_664c9510304b5d 1-320
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "8d86a740569cfb1b4cae9e98d5e372fd6ef5f741",
+  "prompts": {},
+  "sessions": {
+    "s_ee9ed32810b4c5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a2072092-b874-4c5a-a400-fbb4bd992ab1",
+        "model": "deepseek-v4-pro"
+      },
+      "human_author": "kaixin.yuan <kaixin.yuan@ly.com>"
+    }
+  }
+}
