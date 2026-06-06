@@ -110,9 +110,14 @@ async function detectEmotionCycle(m) {
 
   // 兜底：非交易日涨停板为空时，从同花顺强势股中推估龙头
   if (leaders.length === 0 && hotReasonList.length > 0) {
+    // 按 涨幅×换手率 复合分排序（换手率高说明市场共识强）
     const nearLimit = hotReasonList
-      .filter(s => s.changePct >= 9.5)
-      .sort((a, b) => b.changePct - a.changePct)
+      .filter(s => s.changePct >= 5)
+      .sort((a, b) => {
+        const sa = (a.changePct || 0) * Math.min(a.turnoverPct || 0, 50);
+        const sb = (b.changePct || 0) * Math.min(b.turnoverPct || 0, 50);
+        return sb - sa;
+      })
       .slice(0, 5);
     for (const s of nearLimit) {
       leaders.push({
@@ -364,9 +369,13 @@ async function main() {
 
   // ── 3. 筛选候选 ──
   // 主升期扩大候选池（赵老哥：主升要敢上仓位），震荡期缩小
-  const poolSize = emotion.phase === "main-up" ? 40 : emotion.phase === "offday" ? 30 : emotion.phase === "trial" ? 30 : 20;
-  // 按涨幅降序排列后再截取，避免高涨幅股因同花顺默认排序被漏掉
-  hotStocks.sort((a, b) => (b.changePct || 0) - (a.changePct || 0));
+  const poolSize = emotion.phase === "main-up" ? 50 : emotion.phase === "offday" ? 50 : emotion.phase === "trial" ? 40 : 30;
+  // 按 涨幅×换手率 复合分排序（兼顾价格强度与市场参与度）
+  hotStocks.sort((a, b) => {
+    const sa = (a.changePct || 0) * Math.min(a.turnoverPct || 0, 50);
+    const sb = (b.changePct || 0) * Math.min(b.turnoverPct || 0, 50);
+    return sb - sa;
+  });
   const candidates = hotStocks.slice(0, poolSize);
   log(`3/5 逐只分析(${candidates.length}只, ${emotion.phaseLabel}模式)...`);
 
