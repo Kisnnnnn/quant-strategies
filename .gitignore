@@ -1,0 +1,5 @@
+data/cache/*
+!data/cache/.gitkeep
+outputs/*.json
+outputs/*.html
+!outputs/.gitkeep

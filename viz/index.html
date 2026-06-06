@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A股短线策略扫描</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<header class="header">
+  <h1>A股短线策略扫描报告</h1>
+  <div class="meta" id="metaInfo">加载中...</div>
+</header>
+
+<div class="action-bar">
+  <button class="btn-review" id="btnReview" onclick="window.runReview()">生成复盘分析</button>
+  <button class="btn-review secondary" id="btnShortScan" onclick="window.runShortScan()">生成短线信号</button>
+  <a class="btn-review secondary" href="/review">查看复盘报告</a>
+  <button class="btn-review secondary" onclick="window.openPortfolio()">管理持仓</button>
+</div>
+
+<section class="sentiment" id="sentiment"></section>
+
+<section class="cards" id="cards"></section>
+
+<section class="charts" id="charts">
+  <div class="chart-box"><h3>行业板块分布</h3><div class="chart-wrap"><canvas id="sectorChart"></canvas></div></div>
+  <div class="chart-box"><h3>概念板块热度</h3><div class="chart-wrap"><canvas id="conceptChart"></canvas></div></div>
+  <div class="chart-box"><h3>评分分布</h3><div class="chart-wrap"><canvas id="scoreChart"></canvas></div></div>
+</section>
+
+<nav class="tabs" id="tabs"></nav>
+
+<div class="controls">
+  <input type="text" id="search" placeholder="搜索代码/名称..." oninput="renderTable()">
+  <button onclick="window.renderTable()" style="padding:6px 14px;background:#2563eb;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">搜索</button>
+  <select id="sectorFilter" onchange="renderTable()"><option value="">全部行业</option></select>
+  <select id="conceptFilter" onchange="renderTable()"><option value="">全部概念</option></select>
+  <select id="qualityFilter" onchange="renderTable()"><option value="">全部等级</option><option value="S">S级</option><option value="A">A级</option><option value="B">B级</option></select>
+  <span class="filter-count" id="filterCount"></span>
+</div>
+
+<div class="table-wrap">
+  <table id="signalTable"></table>
+</div>
+
+<nav class="top-nav"><a href="/review">复盘分析 →</a></nav>
+
+<!-- 确认弹窗 -->
+<div class="modal-overlay" id="confirmModal" onclick="document.getElementById('confirmCancel').click()">
+  <div class="confirm-box" onclick="event.stopPropagation()">
+    <div class="confirm-icon" id="confirmIcon">⏳</div>
+    <div class="confirm-msg" id="confirmMsg"></div>
+    <div class="confirm-btns">
+      <button class="btn-cancel" id="confirmCancel">取消</button>
+      <button class="btn-ok" id="confirmOk">确认</button>
+    </div>
+  </div>
+</div>
+
+<!-- 持仓管理弹窗 -->
+<div class="modal-overlay" id="portfolioModal" onclick="window.closePortfolio(event)">
+  <div class="modal-content" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h2>持仓管理</h2>
+      <button class="modal-close" onclick="window.closePortfolio()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="pf-add-row">
+        <div class="pf-search-wrap">
+          <input type="text" id="pfSearch" placeholder="输入代码或名称搜索..." oninput="window.searchStockDebounced()" onkeydown="window.pfSearchKeydown(event)" autocomplete="off">
+          <div class="pf-dropdown" id="pfDropdown"></div>
+        </div>
+      </div>
+      <div class="pf-list" id="pfList">加载中...</div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<script type="module" src="/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,36 @@
+{
+  "project": {
+    "name": "celue",
+    "version": "1.0.0",
+    "active_strategies": ["band-dip", "dragon-reverse"]
+  },
+
+  "data": {
+    "root": "data",
+    "cache_enabled": true,
+    "cache_max_age_hours": 6,
+    "source": {
+      "provider": "tencent",
+      "quote_batch_size": 60,
+      "kline_provider": "baidu",
+      "request_delay_ms": 50,
+      "timeout_seconds": 15,
+      "max_retries": 3
+    },
+    "paths": {
+      "cache": "data/cache"
+    }
+  },
+
+  "universe": {
+    "exclude_st": true,
+    "exclude_new_stocks_days": 60,
+    "boards": ["sh", "sz", "cy", "kc"]
+  },
+
+  "outputs": {
+    "root": "outputs",
+    "format": "json",
+    "max_results": 20
+  }
+}

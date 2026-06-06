@@ -1,0 +1,47 @@
+{
+  "strategy": {
+    "name": "dragon-reverse",
+    "display_name": "龙回头二次启动",
+    "version": "2.0.0"
+  },
+
+  "dragon": {
+    "min_first_wave_pct": 25,
+    "min_retrace_pct": 8,
+    "max_retrace_pct": 35,
+    "max_retrace_days": 15,
+    "max_vol_ratio": 0.6,
+    "require_wave_near_60d_high": true,
+    "wave_high_ratio_threshold": 0.85,
+    "min_limit_up_days": 1,
+    "min_strong_days": 2,
+    "exclude_continuous_limit_down": true
+  },
+
+  "stabilizing": {
+    "min_stabilizing_days": 2,
+    "require_above_ma20": false,
+    "require_amp_converge": false,
+    "require_no_new_low": true
+  },
+
+  "catalyst": {
+    "inst_net_buy_bonus": 3000,
+    "inst_net_sell_penalty": 5000,
+    "dragon_tiger_weight": true
+  },
+
+  "filters": {
+    "min_mcap_yi": 100
+  },
+
+  "scoring": {
+    "weights": {
+      "wave_strength": 0.25,
+      "strong_days": 0.20,
+      "volume_shrink": 0.20,
+      "retrace_quality": 0.20,
+      "stabilizing": 0.15
+    }
+  }
+}

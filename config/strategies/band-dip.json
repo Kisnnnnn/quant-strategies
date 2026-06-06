@@ -1,0 +1,45 @@
+{
+  "strategy": {
+    "name": "band-dip",
+    "display_name": "波段回调选股",
+    "version": "2.0.0"
+  },
+
+  "trend": {
+    "ma_short": 5,
+    "ma_mid": 10,
+    "ma_long": 20,
+    "require_ma20_rising": true
+  },
+
+  "pullback": {
+    "max_dist_ma20_pct": 5,
+    "min_turnover_pct": 1.5,
+    "require_volume_shrink": false
+  },
+
+  "filters": {
+    "min_price": 4,
+    "min_mcap_yi": 50,
+    "sector": {
+      "min_sector_change_pct": -5,
+      "prefer_sector_positive": true
+    },
+    "volume": {
+      "exclude_heavy_vol_drop": true,
+      "max_vol20_ratio": 2.0,
+      "min_consecutive_shrink_days": 0
+    }
+  },
+
+  "scoring": {
+    "dynamic_weights": true,
+    "weights": {
+      "trend_quality": 0.30,
+      "dist_ma20": 0.25,
+      "volume_state": 0.20,
+      "price_action": 0.15,
+      "liquidity": 0.10
+    }
+  }
+}
