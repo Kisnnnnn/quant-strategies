@@ -5,11 +5,15 @@
 import { writeFileSync, existsSync, mkdirSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
+import { CacheManager } from "../src/cache.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT = join(__dirname, "..");
 const STOCK_DATA = join(PROJECT, "../chaogu/stock-data.mjs");
 const OUT = join(PROJECT, "outputs");
+const CACHE_DIR = join(PROJECT, "data/cache");
+
+const cache = new CacheManager(CACHE_DIR);
 
 let _m = null;
 async function getMod() {
@@ -17,7 +21,25 @@ async function getMod() {
   return _m;
 }
 
-function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+// 当日缓存键前缀，每天自动隔离
+let _today = null;
+function todayStr() {
+  if (!_today) _today = new Date().toISOString().slice(0, 10);
+  return _today;
+}
+
+// 缓存封装：命中返回缓存，未命中执行 fetcher 并写入
+async function cached(key, fetcher, maxAgeHours) {
+  const hit = cache.get(key, maxAgeHours);
+  if (hit !== null) return hit;
+  try {
+    const data = await fetcher();
+    if (data !== null && data !== undefined) cache.set(key, data);
+    return data;
+  } catch {
+    return null;
+  }
+}
 
 // ── 情绪周期检测（六位游资共性） ──────────────────────
 function isWeekend(date) {
@@ -25,14 +47,32 @@ function isWeekend(date) {
   return d.getDay() === 0 || d.getDay() === 6;
 }
 
+// A股交易时段：上午 9:30-11:30，下午 13:00-15:00
+function isMarketOpen() {
+  if (isWeekend()) return false;
+  const now = new Date();
+  const t = now.getHours() * 60 + now.getMinutes();
+  return (t >= 570 && t < 690) || (t >= 780 && t <= 900); // 9:30-11:30, 13:00-15:00
+}
+
+// 缓存TTL策略：开盘实时(不缓存行情)，休市快照(缓存到下次开盘)
+function cacheTTL() {
+  if (isMarketOpen()) return { mkt: 0, stock: 0.5 };   // 开盘：行情不缓存，基本面30min
+  if (isWeekend())     return { mkt: 48, stock: 48 };   // 周末：长缓存
+  return { mkt: 12, stock: 12 };                         // 工作日盘后：缓存到次日开盘
+}
+
 async function detectEmotionCycle(m) {
+  const t = todayStr();
+  const ttl = cacheTTL();
+
   let limitUpCount = 0, maxConsecutive = 1, totalAmount = 0;
   let limitStocks = [];
 
   try {
-    const lu = await m.getLimitUpBoard(200);
-    limitUpCount = lu.total || 0;
-    limitStocks = (lu.stocks || []).slice(0, 30);
+    const lu = await cached(`limitup_${t}`, () => m.getLimitUpBoard(200), ttl.mkt);
+    limitUpCount = lu?.total || 0;
+    limitStocks = (lu?.stocks || []).slice(0, 30);
     totalAmount = limitStocks.reduce((s, st) => s + (st.amount || 0), 0);
 
     if (limitStocks.length) {
@@ -45,7 +85,7 @@ async function detectEmotionCycle(m) {
   // 市场宽度
   let advancing = 0, declining = 0, advDecRatio = "1:1", mktSentiment = "中性";
   try {
-    const breadth = await m.getMarketBreadth();
+    const breadth = await cached(`breadth_${t}`, () => m.getMarketBreadth(), ttl.mkt);
     advancing = breadth?.advancing ?? 0;
     declining = breadth?.declining ?? 0;
     advDecRatio = breadth?.advDecRatio ?? "1:1";
@@ -61,7 +101,7 @@ async function detectEmotionCycle(m) {
   let hotReasonList = [];
   const reasonMap = new Map();
   try {
-    hotReasonList = await m.thsHotReason() || [];
+    hotReasonList = await cached(`hotreason_${t}`, () => m.thsHotReason(), ttl.mkt) || [];
     for (const r of hotReasonList.slice(0, 50)) {
       const tags = (r.reason || "").split(/[,，、]/).map(t => t.trim()).filter(Boolean);
       for (const t of tags) reasonMap.set(t, (reasonMap.get(t) || 0) + 1);
@@ -122,7 +162,7 @@ async function detectEmotionCycle(m) {
     for (const s of nearLimit) {
       leaders.push({
         code: s.code, name: s.name,
-        boards: 1, // 无法确定连板数，标记为1
+        boards: 1,
         turnoverPct: s.turnoverPct || 0,
         amount: s.amount || 0,
         _estimated: true,
@@ -177,6 +217,57 @@ function analyzeKLine(rows, price) {
   };
 }
 
+// ── 智能板块筛选 ──
+// 从 eastmoneyConceptBlocks 返回的 boards 中优选有辨识度的概念板块，
+// 过滤宽泛的行业分类/地区标签/交易属性标签，优先保留：
+//   1. 该股是板块龙头
+//   2. 板块名匹配该股上涨原因关键词
+//   3. 板块涨跌幅高（板块效应强）
+function pickConceptBoards(cb, stockName, reason) {
+  if (!cb?.boards?.length) return (cb?.conceptTags || []).slice(0, 5);
+
+  const generic = new Set([
+    "融资融券", "深股通", "沪股通", "富时罗素", "标准普尔", "MSCI中国",
+    "中证500", "沪深300", "上证180", "上证50", "深证100", "创业板指",
+    "转融券标的", "AB股", "QFII重仓", "机构重仓", "基金重仓", "券商重仓",
+    "信托重仓", "保险重仓", "社保重仓", "养老金", "证金持股", "汇金持股",
+  ]);
+  const isProvince = /(?:广东|北京|上海|浙江|江苏|山东|安徽|湖北|湖南|四川|福建|河南|河北|辽宁|天津|重庆|陕西|江西|云南|广西|山西|贵州|黑龙江|吉林|内蒙古|新疆|甘肃|海南|宁夏|青海|西藏)板块$/;
+  const isAdmin = /^(?:昨日|最近|近[日周月]|持续|微盘|小盘|中盘|大盘|亏损|预[增减亏]|送转|除[权息]|高[频连]|破[发净增]|题材|趋势|反转|昨日)/;
+
+  const kw = (reason || "").split(/[+,，、\s]+/).map(t => t.trim()).filter(Boolean);
+
+  const scored = cb.boards
+    .filter(b => {
+      if (generic.has(b.name)) return false;
+      if (isProvince.test(b.name)) return false;
+      if (isAdmin.test(b.name)) return false;
+      return true;
+    })
+    .map(b => {
+      let score = 0;
+      if (b.leadStock === stockName) score += 100;
+      for (const w of kw) {
+        if (w.length >= 2 && (b.name.includes(w) || w.includes(b.name))) score += 50;
+      }
+      score += Math.min(99, Math.max(0, (b.changePct || 0) * 20));
+      return { name: b.name, score };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  const top = scored.slice(0, 5).map(b => b.name);
+  // 兜底：如果过滤后不足3个，从原始 conceptTags 中补
+  if (top.length < 3 && cb.conceptTags?.length) {
+    for (const t of cb.conceptTags) {
+      if (!top.includes(t) && !generic.has(t) && !isProvince.test(t) && !isAdmin.test(t)) {
+        top.push(t);
+        if (top.length >= 5) break;
+      }
+    }
+  }
+  return top;
+}
+
 // ── 策略评分（六位游资共性量化版） ──
 function scoreSignal(stock, emotion) {
   const k = stock.kline;
@@ -224,10 +315,9 @@ function scoreSignal(stock, emotion) {
   const isLeader = emotion?.leaders?.some(l => l.code === stock.code);
   const isMidPosition = stock.consecutiveDays >= 4 && stock.consecutiveDays <= 6
     && !emotion?.leaders?.some(l => l.code === stock.code && l.boards >= 7);
-  const turnDeath = turn > 70; // 死亡换手（92科比）
+  const turnDeath = turn > 70;
 
   // ── 加分项 ──
-  // 🏆 龙头辨识度（赵老哥+92科比：龙头溢价是最确定的利润）
   if (isLeader) {
     score += 20; reasons.push("🏆市场龙头");
     if (turn >= 10 && turn <= 40) { score += 5; reasons.push("换手健康"); }
@@ -275,7 +365,6 @@ function scoreSignal(stock, emotion) {
   if (stock.limitTime === "early") { score += 4; reasons.push("早盘封板"); }
 
   // ── 减分项 ──
-  // ⚠️ 中位股回避（92科比+养家：4进5/5进6亏钱效率最高）
   if (isMidPosition) {
     score -= 12; reasons.push("⚠中位股风险");
   }
@@ -300,7 +389,6 @@ function scoreSignal(stock, emotion) {
 
   score = Math.max(10, Math.min(98, score));
 
-  // 情绪阶段影响操作阈值（主升期更积极，主跌期更严格）
   const buyTh = phase === "main-up" ? 75 : phase === "trial" ? 78 : phase === "decline" ? 82 : 80;
   const addTh = phase === "main-up" ? 60 : phase === "trial" ? 62 : phase === "decline" ? 68 : 64;
 
@@ -332,35 +420,36 @@ async function main() {
     log(`  龙头: ${emotion.leaders.slice(0, 3).map(l => `${l.name}(${l.boards}板)`).join(" · ")}`);
   }
 
-  // ── 2. 获取强势股 + 热门题材 ──
+  const t = todayStr();
+  const ttl = cacheTTL();
+
+  // ── 2. 获取强势股 + 热门题材（一次调用复用两份逻辑）──
   log("2/5 获取强势股池...");
   let hotStocks = [];
   let hotTopics = [];
   try {
-    hotStocks = await m.thsHotReason() || [];
+    hotStocks = await cached(`hotreason_${t}`, () => m.thsHotReason(), ttl.mkt) || [];
     log(`  强势股: ${hotStocks.length}只`);
-  } catch (e) { log("  强势股获取失败:", e.message); }
 
-  try {
-    const hr = await m.thsHotReason();
-    if (hr?.length) {
+    if (hotStocks.length) {
       const reasonMap = new Map();
-      for (const r of hr.slice(0, 50)) {
+      for (const r of hotStocks.slice(0, 50)) {
         const tags = (r.reason || "").split(/[,，、]/).map(t => t.trim()).filter(Boolean);
         for (const t of tags) reasonMap.set(t, (reasonMap.get(t) || 0) + 1);
       }
       hotTopics = [...reasonMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 15).map(([t]) => t);
       log(`  热门题材: ${hotTopics.length}个`);
     }
-  } catch { /* skip */ }
+  } catch (e) { log("  强势股获取失败:", e.message); }
 
   // 题材强度（涨停≥3只同板块才叫有梯队——养家标准）
   const sectorCounts = new Map();
   if (emotion.leaders.length) {
     for (const l of emotion.leaders.slice(0, 5)) {
       try {
-        const cb = await m.eastmoneyConceptBlocks(l.code);
-        for (const t of (cb?.conceptTags || []).slice(0, 5)) {
+        const cb = await cached(`concept_${l.code}_${t}`, () => m.eastmoneyConceptBlocks(l.code), ttl.stock);
+        const tags = pickConceptBoards(cb, l.name, l.reason || "");
+        for (const t of tags) {
           sectorCounts.set(t, (sectorCounts.get(t) || 0) + 1);
         }
       } catch { /* skip */ }
@@ -368,7 +457,6 @@ async function main() {
   }
 
   // ── 3. 筛选候选 ──
-  // 主升期扩大候选池（赵老哥：主升要敢上仓位），震荡期缩小
   const poolSize = emotion.phase === "main-up" ? 50 : emotion.phase === "offday" ? 50 : emotion.phase === "trial" ? 40 : 30;
   // 按 涨幅×换手率 复合分排序（兼顾价格强度与市场参与度）
   hotStocks.sort((a, b) => {
@@ -379,114 +467,99 @@ async function main() {
   const candidates = hotStocks.slice(0, poolSize);
   log(`3/5 逐只分析(${candidates.length}只, ${emotion.phaseLabel}模式)...`);
 
+  // 批量获取行情（缓存 + 一次HTTP调用）
+  let quotes = {};
+  try {
+    const codes = candidates.map(s => s.code);
+    quotes = await cached(`quotes_${t}`, () => m.tencentQuote(codes).then(r => r || {}), ttl.mkt);
+  } catch { /* skip */ }
+
+  // 并行分批处理（每批6只，减少串行等待）
+  const BATCH = 6;
   const results = [];
-  for (const s of candidates) {
-    process.stderr.write(".");
-    const code = s.code;
+  for (let i = 0; i < candidates.length; i += BATCH) {
+    const batch = candidates.slice(i, i + BATCH);
+    const batchResults = await Promise.all(
+      batch.map(async (s) => {
+        const code = s.code;
+        const quote = quotes[code];
+        if (!quote) return null;
+        if (/^(\*?ST|N|退|C)/.test(quote.name)) return null;
 
-    let quote = null;
-    try {
-      const qs = await m.tencentQuote([code]);
-      quote = qs[code];
-    } catch { /* skip */ }
-    if (!quote) continue;
-
-    // 过滤ST/退市/新股（名称含ST/*ST/N/退）
-    if (/^(\*?ST|N|退|C)/.test(quote.name)) continue;
-
-    // 题材梯队支持度
-    let sectorSupport = 0;
-    try {
-      const cb = await m.eastmoneyConceptBlocks(code);
-      for (const t of (cb?.conceptTags || [])) {
-        if ((sectorCounts.get(t) || 0) >= 2) sectorSupport++;
-      }
-    } catch { /* skip */ }
-
-    const stock = {
-      code, name: quote.name, price: quote.price,
-      changePct: quote.changePct, pe: quote.peTtm, pb: quote.pb,
-      mcap: quote.mcapYi, turnover: quote.turnoverPct,
-      reason: s.reason || "",
-      inHotTopic: hotTopics.some(t => (s.reason || "").includes(t)),
-      sectorSupport,
-      consecutiveDays: 0,
-    };
-
-    // 连板天数（匹配龙头列表）
-    const luMatch = emotion.leaders.find(l => l.code === code);
-    if (luMatch) stock.consecutiveDays = luMatch.boards;
-
-    // K线
-    try {
-      const rows = await fetchKLine(code);
-      stock.kline = analyzeKLine(rows, stock.price);
-    } catch { /* skip */ }
-
-    // 资金流
-    try {
-      const flows = await m.stockFundFlow120d(code);
-      if (flows?.length) {
-        const sum = (arr, key, n) => arr.slice(-n).reduce((s, f) => s + (f[key] || 0), 0);
-        stock.fundFlow = {
-          today: flows[flows.length - 1],
-          main3d: sum(flows, 'mainNet', 3),
-          main5d: sum(flows, 'mainNet', 5),
-          main10d: sum(flows, 'mainNet', 10),
+        const stock = {
+          code, name: quote.name, price: quote.price,
+          changePct: quote.changePct, pe: quote.peTtm, pb: quote.pb,
+          mcap: quote.mcapYi, turnover: quote.turnoverPct,
+          reason: s.reason || "",
+          inHotTopic: hotTopics.some(t => (s.reason || "").includes(t)),
+          sectorSupport: 0,
+          consecutiveDays: 0,
         };
-        let consDays = 0;
-        for (let i = flows.length - 1; i >= 0; i--) {
-          if ((flows[i].mainNet > 0) === (flows[flows.length - 1].mainNet > 0)) consDays++;
-          else break;
+
+        // 连板天数
+        const luMatch = emotion.leaders.find(l => l.code === code);
+        if (luMatch) stock.consecutiveDays = luMatch.boards;
+
+        // 并行拉取：K线 + 概念板块 + 资金流（均缓存）
+        const [klineRows, cb, flows] = await Promise.all([
+          cached(`kline_${code}_${t}`, () => fetchKLine(code).catch(() => null), ttl.stock),
+          cached(`concept_${code}_${t}`, () => m.eastmoneyConceptBlocks(code).catch(() => null), ttl.stock),
+          cached(`flow_${code}_${t}`, () => m.stockFundFlow120d(code).catch(() => []), ttl.stock),
+        ]);
+
+        // K线
+        stock.kline = analyzeKLine(klineRows, stock.price);
+
+        // 概念板块（智能筛选，同时用于 sectorSupport + conceptTags）
+        stock.conceptTags = pickConceptBoards(cb, stock.name, stock.reason);
+        stock.industry = stock.conceptTags[0] || (cb?.boards || [])[0]?.name || "";
+        for (const t of stock.conceptTags) {
+          if ((sectorCounts.get(t) || 0) >= 2) stock.sectorSupport++;
         }
-        stock.fundFlow.consDays = consDays;
-        stock.fundFlow.consDir = flows[flows.length - 1].mainNet > 0 ? '流入' : '流出';
-      }
-    } catch { /* skip */ }
 
-    // 概念板块
-    try {
-      const cb = await m.eastmoneyConceptBlocks(code);
-      if (cb?.conceptTags?.length) {
-        stock.conceptTags = cb.conceptTags.slice(0, 5);
-        stock.industry = (cb.boards || [])[0]?.name || "";
-      }
-    } catch { /* skip */ }
+        // 资金流
+        if (flows?.length) {
+          const sum = (arr, key, n) => arr.slice(-n).reduce((s, f) => s + (f[key] || 0), 0);
+          stock.fundFlow = {
+            today: flows[flows.length - 1],
+            main3d: sum(flows, "mainNet", 3),
+            main5d: sum(flows, "mainNet", 5),
+            main10d: sum(flows, "mainNet", 10),
+          };
+          let consDays = 0;
+          for (let i = flows.length - 1; i >= 0; i--) {
+            if ((flows[i].mainNet > 0) === (flows[flows.length - 1].mainNet > 0)) consDays++;
+            else break;
+          }
+          stock.fundFlow.consDays = consDays;
+          stock.fundFlow.consDir = flows[flows.length - 1].mainNet > 0 ? "流入" : "流出";
+        }
 
-    // 龙虎榜
-    try {
-      const dt = await m.dragonTigerBoard(code, today, 30);
-      if (dt?.records?.length) {
-        stock.dragonTiger = { count: dt.records.length, latest: dt.records[0] };
-        const allSeats = [
-          ...(dt.seats?.buy || []).map(s => ({ ...s, side: "buy" })),
-          ...(dt.seats?.sell || []).map(s => ({ ...s, side: "sell" })),
-        ];
-        const netSum = allSeats.reduce((s, seat) => s + (seat.net || 0), 0);
-        stock.dtBull = netSum > 3000;
-        stock.dtBear = netSum < -3000;
-      }
-    } catch { /* skip */ }
+        // 评分
+        const signal = scoreSignal(stock, emotion);
+        if (signal && signal.score >= 40) {
+          stock.score = signal.score;
+          stock.action = signal.action;
+          stock.signals = signal.reasons;
+          stock.tFlag = signal.tFlag;
+          stock.isLeader = signal.isLeader;
+          return stock;
+        }
+        return null;
+      })
+    );
 
-    // 评分（传入情绪数据）
-    const signal = scoreSignal(stock, emotion);
-    if (signal && signal.score >= 40) {
-      stock.score = signal.score;
-      stock.action = signal.action;
-      stock.signals = signal.reasons;
-      stock.tFlag = signal.tFlag;
-      stock.isLeader = signal.isLeader;
-      results.push(stock);
+    for (const r of batchResults) {
+      if (r) results.push(r);
     }
-
-    await delay(600);
+    process.stderr.write(".");
   }
   process.stderr.write("\n");
 
   // ── 4. 排序 ──
   results.sort((a, b) => b.score - a.score);
   log(`4/5 有效信号: ${results.length}只`);
-  log(`  买入(${results.filter(r => r.action === '买入').length}) 加仓(${results.filter(r => r.action === '加仓').length}) 做T(${results.filter(r => r.action === '做T').length}) 关注(${results.filter(r => r.action === '关注').length})`);
+  log(`  买入(${results.filter(r => r.action === "买入").length}) 加仓(${results.filter(r => r.action === "加仓").length}) 做T(${results.filter(r => r.action === "做T").length}) 关注(${results.filter(r => r.action === "关注").length})`);
 
   // ── 5. 市场情绪 + 输出 ──
   let market = {};

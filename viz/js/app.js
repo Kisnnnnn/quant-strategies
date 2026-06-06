@@ -336,7 +336,7 @@ function renderCharts() {
   // 行业板块
   const sectorMap = new Map();
   for (const r of res) {
-    const sec = cleanSector(r.industries?.[0]) || "其他";
+    const sec = cleanSector(isShortTerm() ? r.industry : r.industries?.[0]) || "其他";
     sectorMap.set(sec, (sectorMap.get(sec) || 0) + 1);
   }
   const sectorData = [...sectorMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 15);
