@@ -1,5 +1,5 @@
 /**
- * 日度复盘分析 — 大盘 + 个人持仓（纯技术面，零外部依赖）
+ * 日度复盘分析 — 大盘 + 个人持仓
  * 用法: node scripts/05-review.mjs
  */
 import { writeFileSync, readFileSync, existsSync, mkdirSync } from "fs";
@@ -8,8 +8,15 @@ import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT = join(__dirname, "..");
+const STOCK_DATA = join(PROJECT, "../chaogu/stock-data.mjs");
 const OUT = join(PROJECT, "outputs");
 const UA = "Mozilla/5.0";
+
+let _m = null;
+async function getMod() {
+  if (!_m) _m = await import(STOCK_DATA);
+  return _m;
+}
 
 const PF_FILE = join(OUT, "portfolio.json");
 const PORTFOLIO = existsSync(PF_FILE) ? JSON.parse(readFileSync(PF_FILE, "utf-8")) : [];
@@ -121,18 +128,6 @@ function analyzeKLine(rows) {
   };
 }
 
-// ── 市场宽度（东财涨幅排名概览） ──────────────────────
-async function fetchMarketBreadth() {
-  try {
-    const url = "https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=1&po=1&np=1&fltt=2&invt=2&fid=f3&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23&fields=f2,f3,f4,f12";
-    const r = await fetch(url, { headers: { "User-Agent": UA, "Referer": "https://quote.eastmoney.com/" } });
-    const d = await r.json();
-    // 东财全A指数涨跌可作为市场情绪参考
-    const total = d?.data?.total || 0;
-    return { total, source: "eastmoney" };
-  } catch { return null; }
-}
-
 // ── 个股判断 ──────────────────────────────────────────
 function judge(holding) {
   const k = holding.kline;
@@ -196,11 +191,34 @@ async function main() {
 
   // ── 1. 大盘 ──────────────────────────────────────────
   log("1/3 大盘数据...");
+  const m = await getMod();
+  report.market = {};
   try {
-    const breadth = await fetchMarketBreadth();
-    report.market = { stocksTotal: breadth?.total || "?" };
-    log(`  全A股数量: ${report.market.stocksTotal}`);
-  } catch { report.market = { note: "大盘数据暂不可用" }; }
+    const [breadth, north, hotReasons] = await Promise.all([
+      m.getMarketBreadth(),
+      m.hsgtRealtime().catch(() => null),
+      m.thsHotReason().catch(() => null),
+    ]);
+    const hgt = north?.hgt?.filter(v => v != null).pop() ?? null;
+    const sgt = north?.sgt?.filter(v => v != null).pop() ?? null;
+    report.market = {
+      advDecRatio: breadth?.advDecRatio ?? "-",
+      sentiment: breadth?.sentiment ?? "-",
+      advancing: breadth?.advancing ?? 0,
+      declining: breadth?.declining ?? 0,
+      flat: breadth?.flat ?? 0,
+      northbound: { hgt, sgt, total: (hgt != null && sgt != null) ? +(hgt + sgt).toFixed(1) : null },
+    };
+    if (hotReasons?.length) {
+      const reasonMap = new Map();
+      for (const r of hotReasons.slice(0, 30)) {
+        const tags = (r.reason || "").split(/[,，、]/).map(t => t.trim()).filter(Boolean);
+        for (const t of tags) reasonMap.set(t, (reasonMap.get(t) || 0) + 1);
+      }
+      report.market.hotTopics = [...reasonMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([t, n]) => ({ topic: t, count: n }));
+    }
+    log(`  情绪: ${report.market.sentiment} | 涨${report.market.advancing}跌${report.market.declining} | 北向: ${report.market.northbound?.total ?? "?"}亿`);
+  } catch (e) { log("  大盘数据失败:", e.message); report.market = { note: "大盘数据暂不可用" }; }
 
   // ── 2. 持仓行情 + K线分析 ────────────────────────────
   log(`2/3 持仓分析 (${PORTFOLIO.length}只)...`);

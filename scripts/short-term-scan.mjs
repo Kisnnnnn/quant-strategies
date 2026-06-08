@@ -194,6 +194,11 @@ async function fetchKLine(code) {
   } catch { return null; }
 }
 
+function xueqiuUrl(code) {
+  const prefix = code.startsWith("6") || code.startsWith("9") ? "SH" : code.startsWith("8") ? "BJ" : "SZ";
+  return `https://xueqiu.com/S/${prefix}${code}`;
+}
+
 function analyzeKLine(rows, price) {
   if (!rows || rows.length < 20) return null;
   const len = rows.length;
@@ -624,6 +629,7 @@ async function main() {
       } : null,
       industry: r.industry || "",
       conceptTags: r.conceptTags || [],
+      xueqiuUrl: xueqiuUrl(r.code),
       dragonTiger: r.dragonTiger || null,
       dtBull: r.dtBull || false, dtBear: r.dtBear || false,
     })),
