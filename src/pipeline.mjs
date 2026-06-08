@@ -380,6 +380,12 @@ export async function runStrategy(strategyName, cfg) {
   writeFileSync(outFile, JSON.stringify({ generatedAt: now(), total: final.length, results: enriched, sentiment }, null, 2), "utf-8");
   log(`结果已保存: ${outFile}`);
 
+  // 自动归档到 history/（供回测使用）
+  const histDir = join(PROJECT, "history");
+  if (!existsSync(histDir)) mkdirSync(histDir, { recursive: true });
+  writeFileSync(join(histDir, `${strategyName}-${ts}.json`), JSON.stringify({ generatedAt: now(), total: final.length, results: enriched, sentiment }, null, 2), "utf-8");
+  log(`  历史快照已归档: history/${strategyName}-${ts}.json`);
+
   log(`${"=".repeat(60)}`);
   log(`  完成 — ${now()}`);
   log(`${"=".repeat(60)}\n`);
