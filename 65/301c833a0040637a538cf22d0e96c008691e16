@@ -1,0 +1,73 @@
+src/pipeline.mjs
+  s_f9598046b19a90::t_d0131625a8f428 128
+  s_f9598046b19a90::t_2ddce94a45664a 172
+viz/js/app.js
+  s_f9598046b19a90::t_affcf972b86f29 2
+  s_f9598046b19a90::t_e007a1e7fcdc72 178,180,182
+  s_f9598046b19a90::t_626c034623e53b 643-644
+  s_f9598046b19a90::t_9f1fa09a5cf4cd 906-926
+serenity/supply-chain-maps.json
+  s_978c6911bcecbe::t_415c0e74845e00 1-185
+scripts/run-serenity.sh
+  s_978c6911bcecbe::t_85f11af2fbd5a3 1-38
+scripts/05-review.mjs
+  s_f9598046b19a90::t_a52bcac35d0fb7 2,12,17,20-55,60,79,86-93,95-98,102-148,150-175,187,189-197,200-203,205-206,209-212,217-230,232,238-239,241,250-257,260,264-266,270-278,280
+scripts/backtest.mjs
+  s_72ff39e9286c49::t_65bc567579884a 1-386
+serenity/config.json
+  s_978c6911bcecbe::t_26cb654b3a11a3 1-78
+scripts/history-collect.mjs
+  s_72ff39e9286c49::t_05d8d951288f1b 1-53
+serenity/criteria.mjs
+  s_978c6911bcecbe::t_e91962b294dccb 1-355
+serenity/report.mjs
+  s_978c6911bcecbe::t_f68e4bd8cab273 1-234
+serenity/pipeline.mjs
+  s_978c6911bcecbe::t_e053f7a3c61651 1-394
+viz/server.mjs
+  s_f9598046b19a90::t_de4d15f66ea581 217-233
+serenity/red-flags.mjs
+  s_978c6911bcecbe::t_f70fe8ef0d5efb 1-122
+viz/index.html
+  s_f9598046b19a90::t_545841b8461588 19
+  s_f9598046b19a90::t_a435701bf9ab14 6
+  s_f9598046b19a90::t_e1454389f72d64 12
+config/default.json
+  s_978c6911bcecbe::t_372fba06d62abc 5
+scripts/short-term-scan.mjs
+  s_f9598046b19a90::t_fbdd3649836ec3 497
+  s_72ff39e9286c49::t_2a936ce4099a2d 636-642
+  s_f9598046b19a90::t_a3d9ebe36ad57b 610
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "65301c833a0040637a538cf22d0e96c008691e16",
+  "prompts": {},
+  "sessions": {
+    "s_72ff39e9286c49": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dcb9d763-cbf9-4bfa-afe6-eb92e324c92f",
+        "model": "deepseek-v4-pro"
+      },
+      "human_author": "kaixin.yuan <kaixin.yuan@ly.com>"
+    },
+    "s_978c6911bcecbe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0fdbdf5e-1e4b-4230-8cf4-65629753c739",
+        "model": "deepseek-v4-pro"
+      },
+      "human_author": "kaixin.yuan <kaixin.yuan@ly.com>"
+    },
+    "s_f9598046b19a90": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "578553d9-ce37-48c0-9b32-c107ba619ef9",
+        "model": "deepseek-v4-pro"
+      },
+      "human_author": "kaixin.yuan <kaixin.yuan@ly.com>"
+    }
+  }
+}
