@@ -1,5 +1,5 @@
 /**
- * A股短线策略可视化 — 主应用逻辑
+ * 量化分析工具 — 主应用逻辑
  */
 
 // ── State ──────────────────────────────────────────────
@@ -175,9 +175,11 @@ async function init() {
   }
   activeStrategy = STRATEGIES[0];
 
+  const firstData = Object.values(DATA)[0];
   const metas = STRATEGIES.map(s => `${cnName(s)}: ${DATA[s].total}条信号`).join(" · ");
+  const genTime = firstData?.generatedAt || firstData?.date || "";
   document.getElementById("metaInfo").textContent =
-    `${metas} · ${Object.values(DATA)[0]?.generatedAt || "-"}`;
+    `${metas} · 分析时间: ${genTime}`;
 
   renderSentiment();
   renderTabs();
@@ -638,7 +640,8 @@ function renderTable() {
             <h4>基本面</h4>
             <p>
               现价: ${r.price || '-'} | PE: ${r.pe > 0 ? r.pe.toFixed(1) : '亏损'} | PB: ${r.pb?.toFixed(2) || '-'}<br>
-              市值: ${r.mcap || '-'}亿 | 换手: ${st ? (r.turnover || '-') : (r.turn || '-')}%
+              市值: ${r.mcap || '-'}亿 | 换手: ${st ? (r.turnover || '-') : (r.turn || '-')}%<br>
+              <span class="quote-time">行情时间: ${r.quoteTime || '-'}</span>
             </p>
           </div>
           ${(st ? r.industry : r.industries?.length) || r.conceptTags?.length ? `
@@ -897,6 +900,27 @@ window.runShortScan = async function () {
     alert("请求失败: " + e.message);
     btn.disabled = false;
     btn.textContent = "生成短线信号";
+  }
+};
+
+window.runStrategies = async function () {
+  const ok = await window.showConfirm("📊", "确定要<strong>运行策略分析</strong>？<br><span style='font-size:13px;color:var(--muted)'>同时执行波段回调+龙回头策略，大约需要90秒</span>");
+  if (!ok) return;
+  const btn = document.getElementById("btnStrategies");
+  btn.disabled = true;
+  btn.textContent = "策略运行中...";
+  try {
+    await fetch("/api/run-strategies");
+    btn.textContent = "策略运行中(约90秒)...";
+    setTimeout(() => {
+      location.reload();
+      btn.disabled = false;
+      btn.textContent = "运行策略分析";
+    }, 90000);
+  } catch (e) {
+    alert("请求失败: " + e.message);
+    btn.disabled = false;
+    btn.textContent = "运行策略分析";
   }
 };
 

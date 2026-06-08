@@ -1,0 +1,185 @@
+{
+  "_meta": {
+    "description": "AI基础设施供应链栈 — 从终端需求到原料，逐层上溯。用于定位标的在链上的卡点位置。",
+    "updated": "2026-06-08",
+    "note": "供应链关系基于公开信息（10-K/财报/行业报告/产业新闻）推断，非官方确认。待一手源验证。"
+  },
+
+  "ai_infra": {
+    "name": "AI算力基础设施",
+    "super_cycle": "AI基础设施建设 · 中段（业绩验证期）",
+    "layers": [
+      {
+        "position": 1,
+        "layer": "终端需求",
+        "players": ["字节跳动", "阿里巴巴", "腾讯", "中国移动", "中国电信"],
+        "description": "AI算力采购需求方，capex驱动整条链",
+        "bottleneck": false
+      },
+      {
+        "position": 2,
+        "layer": "服务器/整机组装",
+        "players": [
+          {"code": "000977", "name": "浪潮信息", "role": "AI服务器ODM"},
+          {"code": "603019", "name": "中科曙光", "role": "国产服务器"},
+          {"code": "000938", "name": "紫光股份", "role": "交换机/服务器"},
+          {"code": "601138", "name": "工业富联", "role": "代工组装（英伟达GB300）"}
+        ],
+        "description": "服务器代工/组装，壁垒中等（规模效应+客户关系），利润率薄",
+        "bottleneck": false
+      },
+      {
+        "position": 3,
+        "layer": "算力芯片",
+        "players": [
+          {"code": "688256", "name": "寒武纪", "role": "国产AI训练/推理芯片"},
+          {"code": "688041", "name": "海光信息", "role": "x86兼容CPU+DCU"},
+          {"code": "300474", "name": "景嘉微", "role": "GPU国产替代"}
+        ],
+        "description": "算力芯片是最强卡点，但A股标的与NV差距大。国产替代逻辑需要时间验证",
+        "bottleneck": true,
+        "note": "寒武纪市值极大(>3000亿)零收入，框架判断力弱"
+      },
+      {
+        "position": 4,
+        "layer": "光模块/光通信",
+        "locked_stocks": [
+          {"code": "300308", "name": "中际旭创", "tier": "成品", "sub_layer": "800G/1.6T光模块"},
+          {"code": "300502", "name": "新易盛", "tier": "成品", "sub_layer": "800G/1.6T光模块"},
+          {"code": "300394", "name": "天孚通信", "tier": "器件", "sub_layer": "光器件(隔离器/FA组件/MPO)"},
+          {"code": "002281", "name": "光迅科技", "tier": "成品+芯片", "sub_layer": "光模块+光芯片"}
+        ],
+        "description": "光模块是A股AI链最纯的卡点 — 全球份额>40%，800G→1.6T迭代中。但市值已大到框架判断力弱",
+        "bottleneck": true,
+        "upstream": "光芯片 → 外延片 → 衬底"
+      },
+      {
+        "position": 5,
+        "layer": "光芯片",
+        "locked_stocks": [
+          {"code": "688498", "name": "源杰科技", "tier": "芯片", "sub_layer": "EML/DFB激光器芯片"},
+          {"code": "688048", "name": "长光华芯", "tier": "芯片", "sub_layer": "高功率激光芯片+光通信芯片"},
+          {"code": "688167", "name": "炬光科技", "tier": "器件+芯片", "sub_layer": "光场匀化器/光子器件"}
+        ],
+        "description": "光芯片是光模块上游卡点，国产替代空间大但认证周期长。EML严重短缺",
+        "bottleneck": true,
+        "note": "认证中≠已design-in，需一手源确认为管理层声称还是已证实"
+      },
+      {
+        "position": 6,
+        "layer": "高速PCB",
+        "locked_stocks": [
+          {"code": "002463", "name": "沪电股份", "tier": "高端", "sub_layer": "AI服务器PCB(进入NV GB300链)"},
+          {"code": "300476", "name": "胜宏科技", "tier": "高端", "sub_layer": "高多层PCB/HDI"},
+          {"code": "002916", "name": "深南电路", "tier": "高端", "sub_layer": "IC载板+高多层PCB"}
+        ],
+        "description": "AI服务器PCB层数/材料要求跃升，能做好的不超3家。卡点稀缺性强",
+        "bottleneck": true
+      },
+      {
+        "position": 7,
+        "layer": "铜连接/高速背板",
+        "locked_stocks": [
+          {"code": "688668", "name": "鼎通科技", "tier": "连接器", "sub_layer": "高速背板连接器(进入NV)"},
+          {"code": "688629", "name": "华丰科技", "tier": "连接器", "sub_layer": "高速背板连接器"}
+        ],
+        "description": "壁垒在精密模具+高频信号完整性。鼎通有design-win但体量极小，单一客户集中风险",
+        "bottleneck": true,
+        "note": "鼎通市值极小但客户集中度高（命系NV一家）"
+      },
+      {
+        "position": 8,
+        "layer": "液冷/散热",
+        "locked_stocks": [
+          {"code": "002837", "name": "英维克", "tier": "温控", "sub_layer": "精密温控/液冷"},
+          {"code": "300499", "name": "高澜股份", "tier": "液冷", "sub_layer": "电力电子液冷"},
+          {"code": "301018", "name": "申菱环境", "tier": "环境", "sub_layer": "数据中心环境控制"}
+        ],
+        "description": "液冷需求确定但壁垒不够深 — 能做温控的都能做液冷，竞争格局分散",
+        "bottleneck": false
+      },
+      {
+        "position": 9,
+        "layer": "存储/HBM",
+        "locked_stocks": [
+          {"code": "603986", "name": "兆易创新", "tier": "存储", "sub_layer": "NOR Flash/SLC NAND/MCU"},
+          {"code": "300223", "name": "北京君正", "tier": "存储+计算", "sub_layer": "SRAM/DRAM/AI计算"},
+          {"code": "301308", "name": "江波龙", "tier": "模组", "sub_layer": "SSD/内存模组"}
+        ],
+        "description": "HBM是AI算力最卡脖子环节，但A股无纯HBM标的。存储模组/利基型存储受益但非直接卡点",
+        "bottleneck": false
+      }
+    ]
+  },
+
+  "robotics": {
+    "name": "人形机器人/具身智能",
+    "super_cycle": "具身智能 · 早期（概念→认证切换期）",
+    "layers": [
+      {
+        "position": 1,
+        "layer": "终端/品牌",
+        "players": ["特斯拉Optimus", "优必选", "小米", "宇树科技"],
+        "description": "本体厂尚未收敛，商业模式未验证",
+        "bottleneck": false
+      },
+      {
+        "position": 2,
+        "layer": "关节模组",
+        "players": [
+          {"code": "300124", "name": "汇川技术", "role": "伺服/驱动"},
+          {"code": "002050", "name": "三花智控", "role": "热管理+执行器"}
+        ],
+        "description": "汇川卡点强但市值过大(>1800亿)",
+        "bottleneck": true
+      },
+      {
+        "position": 3,
+        "layer": "减速器（核心卡点）",
+        "locked_stocks": [
+          {"code": "688017", "name": "绿的谐波", "tier": "谐波减速器", "sub_layer": "国内唯一规模化谐波减速器供应商"},
+          {"code": "002472", "name": "双环传动", "tier": "RV减速器+齿轮", "sub_layer": "RV减速器+精密齿轮，有真实利润支撑"},
+          {"code": "002896", "name": "中大力德", "tier": "减速器+电机", "sub_layer": "减速器+电机一体化方案"}
+        ],
+        "description": "减速器是人形机器人关节的SPOF级部件。谐波+RV双赛道。绿的谐波最纯但估值透支",
+        "bottleneck": true
+      },
+      {
+        "position": 4,
+        "layer": "电机",
+        "locked_stocks": [
+          {"code": "300660", "name": "江苏雷利", "tier": "微电机", "sub_layer": "空心杯电机/无框力矩电机"},
+          {"code": "301007", "name": "德迈仕", "tier": "精密轴", "sub_layer": "微型精密轴"}
+        ],
+        "description": "电机供应商多、壁垒相对低",
+        "bottleneck": false
+      },
+      {
+        "position": 5,
+        "layer": "丝杠/轴承",
+        "locked_stocks": [
+          {"code": "300580", "name": "贝斯特", "tier": "丝杠", "sub_layer": "行星滚柱丝杠(主业汽车零部件)"}
+        ],
+        "description": "滚柱丝杠精度要求极高，国内量产能力弱",
+        "bottleneck": true
+      },
+      {
+        "position": 6,
+        "layer": "传感器",
+        "locked_stocks": [
+          {"code": "300353", "name": "东土科技", "tier": "控制", "sub_layer": "工业互联网+边缘控制"},
+          {"code": "300114", "name": "中航电测", "tier": "力传感器", "sub_layer": "六维力传感器"}
+        ],
+        "description": "六维力传感器壁垒极高，A股标的少且多主业不纯",
+        "bottleneck": true
+      }
+    ]
+  },
+
+  "benchmark_companies": [
+    {"code": "601138", "name": "工业富联", "role": "AI服务器代工龙头，benchmark参考"},
+    {"code": "002475", "name": "立讯精密", "role": "连接器/代工龙头，benchmark参考"},
+    {"code": "603501", "name": "豪威集团", "role": "CIS芯片，AI视觉"},
+    {"code": "601138", "name": "工业富联", "role": "代工龙头"}
+  ]
+}

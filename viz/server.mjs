@@ -214,6 +214,23 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  // API: /api/run-strategies
+  if (pathname === "/api/run-strategies") {
+    const bandScript = join(PROJECT, "scripts", "02-run-band.sh");
+    const dragonScript = join(PROJECT, "scripts", "03-run-dragon.sh");
+    res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+    res.end(JSON.stringify({ ok: true, msg: "strategies started" }));
+    exec(`bash "${bandScript}"`, { cwd: PROJECT }, (err, stdout, stderr) => {
+      if (err) console.error("band-dip error:", err.message);
+      else console.log("band-dip done");
+    });
+    exec(`bash "${dragonScript}"`, { cwd: PROJECT }, (err, stdout, stderr) => {
+      if (err) console.error("dragon-reverse error:", err.message);
+      else console.log("dragon-reverse done");
+    });
+    return;
+  }
+
   // API: /api/short-term
   if (pathname === "/api/short-term") {
     const files = readdirSync(OUT).filter(f => f.startsWith("short-term-") && f.endsWith(".json"));

@@ -1,5 +1,5 @@
 /**
- * 日度复盘分析 — 大盘 + 个人持仓
+ * 日度复盘分析 — 大盘 + 个人持仓（纯技术面，零外部依赖）
  * 用法: node scripts/05-review.mjs
  */
 import { writeFileSync, readFileSync, existsSync, mkdirSync } from "fs";
@@ -8,27 +8,56 @@ import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT = join(__dirname, "..");
-const STOCK_DATA = join(PROJECT, "../chaogu/stock-data.mjs");
 const OUT = join(PROJECT, "outputs");
+const UA = "Mozilla/5.0";
 
-let _m = null;
-async function getMod() {
-  if (!_m) _m = await import(STOCK_DATA);
-  return _m;
-}
-
-// 用户持仓（从 portfolio.json 读取）
 const PF_FILE = join(OUT, "portfolio.json");
 const PORTFOLIO = existsSync(PF_FILE) ? JSON.parse(readFileSync(PF_FILE, "utf-8")) : [];
 
-function fmt(n, d = 2) { return typeof n === "number" ? n.toFixed(d) : n; }
+function fmt(n, d = 2) { return typeof n === "number" ? +n.toFixed(d) : n; }
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+// ── 腾讯实时行情 ──────────────────────────────────────
+async function fetchQuotes(codes) {
+  const prefix = c => c.startsWith("6") || c.startsWith("9") ? "sh" : "sz";
+  const symbols = codes.map(c => `${prefix(c)}${c}`).join(",");
+  const url = `https://qt.gtimg.cn/q=${symbols}`;
+  try {
+    const r = await fetch(url, { headers: { "User-Agent": UA } });
+    const text = await r.text();
+    const data = {};
+    for (const line of text.split(/;\s*\n?/)) {
+      const m = line.match(/v_(\w+)="(.+)"/);
+      if (!m) continue;
+      const fields = m[2].split("~");
+      const code = fields[2];
+      if (!code || !codes.includes(code)) continue;
+      data[code] = {
+        name: fields[1],
+        price: +fields[3] || 0,
+        prevClose: +fields[4] || 0,
+        open: +fields[5] || 0,
+        volume: +fields[6] || 0,
+        changePct: fields[3] && fields[4] ? +(((fields[3] - fields[4]) / fields[4]) * 100).toFixed(2) : 0,
+        peTtm: +fields[39] || 0,
+        pb: +fields[46] || 0,
+        mcapYi: fields[45] ? +(fields[45] / 1e4).toFixed(1) : 0,
+        turnoverPct: +fields[38] || 0,
+        high: +fields[33] || 0,
+        low: +fields[34] || 0,
+        amountWan: fields[37] ? +(fields[37] / 1e4).toFixed(0) : 0,
+      };
+    }
+    return data;
+  } catch (e) { console.error("行情获取失败:", e.message); return {}; }
+}
+
+// ── 腾讯K线 ───────────────────────────────────────────
 async function fetchKLine(code) {
   const prefix = code.startsWith("6") ? "sh" : "sz";
   const url = `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${prefix}${code},day,,,60,qfq`;
   try {
-    const r = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+    const r = await fetch(url, { headers: { "User-Agent": UA } });
     const d = await r.json();
     const key = `${prefix}${code}`;
     const rows = d?.data?.[key]?.qfqday || d?.data?.[key]?.day || [];
@@ -47,29 +76,106 @@ function analyzeKLine(rows) {
   const ma5 = sma(closes, 5);
   const ma10 = sma(closes, 10);
   const ma20 = sma(closes, 20);
+  const ma60 = len >= 60 ? sma(closes, 60) : null;
   const curr = closes[len - 1];
   const prev = closes[len - 2];
   const dayChg = ((curr - prev) / prev) * 100;
   const wChg = len >= 5 ? ((closes[len - 1] - closes[len - 5]) / closes[len - 5]) * 100 : 0;
   const mChg = len >= 20 ? ((closes[len - 1] - closes[len - 20]) / closes[len - 20]) * 100 : 0;
-  const distMA20 = ((curr - ma20) / ma20) * 100;
-  const trend = ma5 > ma10 && ma10 > ma20 ? "多头排列" : curr > ma20 ? "偏多" : curr > ma10 ? "震荡" : "偏弱";
 
-  // Recent volume trend
+  const aboveMA20 = curr > ma20;
+  const aboveMA60 = ma60 ? curr > ma60 : null;
+  let trend;
+  if (ma5 > ma10 && ma10 > ma20) trend = "多头排列";
+  else if (curr > ma20 && ma20 > (ma60 || ma20)) trend = "偏多";
+  else if (curr > ma10) trend = "震荡";
+  else trend = "偏弱";
+
   const vols = rows.slice(-5).map(r => r.volume);
-  const volTrend = vols[4] < vols[0] * 0.7 ? "缩量" : vols[4] > vols[0] * 1.5 ? "放量" : "平量";
+  const avgVol5 = vols.reduce((a, b) => a + b, 0) / 5;
+  const avgVol20 = rows.slice(-20).reduce((s, r) => s + r.volume, 0) / 20;
+  const volRatio = avgVol20 > 0 ? +(avgVol5 / avgVol20).toFixed(1) : 1;
+  const volTrend = avgVol5 < avgVol20 * 0.7 ? "缩量" : avgVol5 > avgVol20 * 1.5 ? "放量" : "平量";
 
-  // High/low in last 20 days
   const highs20 = rows.slice(-20).map(r => r.high);
   const lows20 = rows.slice(-20).map(r => r.low);
-  const nearHigh20 = ((Math.max(...highs20) - curr) / Math.max(...highs20)) * 100;
-  const nearLow20 = ((curr - Math.min(...lows20)) / Math.min(...lows20)) * 100;
+  const high20 = Math.max(...highs20);
+  const low20 = Math.min(...lows20);
+  const nearHigh20 = ((high20 - curr) / high20) * 100;
+  const nearLow20 = ((curr - low20) / low20) * 100;
+  const distMA20 = ((curr - ma20) / ma20) * 100;
+  const distMA60 = ma60 ? ((curr - ma60) / ma60) * 100 : null;
 
-  return { ma5: fmt(ma5), ma10: fmt(ma10), ma20: fmt(ma20), distMA20: fmt(distMA20, 1), trend, dayChg: fmt(dayChg, 1), wChg: fmt(wChg, 1), mChg: fmt(mChg, 1), volTrend, nearHigh20: fmt(nearHigh20, 1), nearLow20: fmt(nearLow20, 1) };
+  // 支撑/压力位
+  const support = +low20.toFixed(2);
+  const resistance = +high20.toFixed(2);
+
+  return {
+    ma5: fmt(ma5), ma10: fmt(ma10), ma20: fmt(ma20), ma60: ma60 ? fmt(ma60) : null,
+    distMA20: fmt(distMA20, 1), distMA60: distMA60 != null ? fmt(distMA60, 1) : null,
+    trend, dayChg: fmt(dayChg, 1), wChg: fmt(wChg, 1), mChg: fmt(mChg, 1),
+    volTrend, volRatio,
+    nearHigh20: fmt(nearHigh20, 1), nearLow20: fmt(nearLow20, 1),
+    support, resistance,
+    aboveMA20, aboveMA60,
+  };
+}
+
+// ── 市场宽度（东财涨幅排名概览） ──────────────────────
+async function fetchMarketBreadth() {
+  try {
+    const url = "https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=1&po=1&np=1&fltt=2&invt=2&fid=f3&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23&fields=f2,f3,f4,f12";
+    const r = await fetch(url, { headers: { "User-Agent": UA, "Referer": "https://quote.eastmoney.com/" } });
+    const d = await r.json();
+    // 东财全A指数涨跌可作为市场情绪参考
+    const total = d?.data?.total || 0;
+    return { total, source: "eastmoney" };
+  } catch { return null; }
+}
+
+// ── 个股判断 ──────────────────────────────────────────
+function judge(holding) {
+  const k = holding.kline;
+  if (!k) return { verdict: "数据不足", color: "#64748b", summary: "K线数据获取失败" };
+
+  const lines = [];
+  let score = 50;
+
+  // 趋势判断
+  if (k.trend === "多头排列") { score += 15; lines.push("均线多头排列，趋势强劲"); }
+  else if (k.trend === "偏多") { score += 8; lines.push("站上20日线，中期偏多"); }
+  else if (k.trend === "震荡") { score -= 2; lines.push("均线缠绕，方向不明"); }
+  else { score -= 12; lines.push("趋势偏弱，受均线压制"); }
+
+  // 量能判断
+  if (k.volRatio > 1.5) { score += 5; lines.push("放量(量比" + k.volRatio + ")，资金活跃"); }
+  else if (k.volRatio < 0.7) { score -= 3; lines.push("缩量(量比" + k.volRatio + ")，交投清淡"); }
+
+  // 位置判断
+  if (k.nearHigh20 < 5) { score -= 5; lines.push("接近20日高点(距" + k.nearHigh20 + "%)，追高风险"); }
+  if (k.nearLow20 < 5) { score += 5; lines.push("接近20日低点(距" + k.nearLow20 + "%)，支撑附近"); }
+
+  // 短期动量
+  if (k.wChg > 10) { score += 3; lines.push("近5日涨幅" + k.wChg + "%，短期强势"); }
+  else if (k.wChg < -5) { score -= 5; lines.push("近5日跌" + k.wChg + "%，短期弱势"); }
+
+  // MA位置
+  if (k.distMA20 > 15) { score -= 5; lines.push("偏离20日线" + k.distMA20 + "%，超买"); }
+  if (k.distMA20 < -10) { score += 3; lines.push("低于20日线" + k.distMA20 + "%，超卖"); }
+
+  score = Math.max(10, Math.min(95, score));
+
+  let verdict, color;
+  if (score >= 70) { verdict = "偏多"; color = "#16a34a"; }
+  else if (score >= 55) { verdict = "震荡偏多"; color = "#84cc16"; }
+  else if (score >= 45) { verdict = "中性"; color = "#64748b"; }
+  else if (score >= 30) { verdict = "震荡偏空"; color = "#d97706"; }
+  else { verdict = "偏空"; color = "#dc2626"; }
+
+  return { verdict, color, score, summary: lines.join("；"), lines };
 }
 
 async function main() {
-  const m = await getMod();
   const now = new Date().toLocaleString("zh-CN", { hour12: false });
   const today = new Date().toISOString().slice(0, 10);
   const log = console.log;
@@ -78,156 +184,61 @@ async function main() {
   log(`  持仓复盘分析 — ${now}`);
   log(`${"=".repeat(60)}\n`);
 
-  const report = { date: today, generatedAt: now };
+  const report = { date: today, generatedAt: now, quoteTime: now };
 
-  // ── 1. 大盘 ──────────────────────────────────────
+  if (!PORTFOLIO.length) {
+    log("暂无持仓，请先在 portfolio.json 添加股票");
+    const outFile = join(OUT, `review-${today}.json`);
+    writeFileSync(outFile, JSON.stringify({ error: "no holdings" }, null, 2), "utf-8");
+    log(`复盘报告已保存: ${outFile}`);
+    return;
+  }
+
+  // ── 1. 大盘 ──────────────────────────────────────────
   log("1/3 大盘数据...");
   try {
-    const [breadth, north, hotReasons] = await Promise.all([
-      m.getMarketBreadth(),
-      m.hsgtRealtime().catch(() => null),
-      m.thsHotReason().catch(() => null),
-    ]);
-    const hgt = north?.hgt?.filter(v => v != null).pop() ?? null;
-    const sgt = north?.sgt?.filter(v => v != null).pop() ?? null;
-    report.market = {
-      advDecRatio: breadth?.advDecRatio ?? "-",
-      sentiment: breadth?.sentiment ?? "-",
-      advancing: breadth?.advancing ?? 0,
-      declining: breadth?.declining ?? 0,
-      flat: breadth?.flat ?? 0,
-      northbound: { hgt, sgt, total: (hgt != null && sgt != null) ? +(hgt + sgt).toFixed(1) : null },
-    };
+    const breadth = await fetchMarketBreadth();
+    report.market = { stocksTotal: breadth?.total || "?" };
+    log(`  全A股数量: ${report.market.stocksTotal}`);
+  } catch { report.market = { note: "大盘数据暂不可用" }; }
 
-    // 热门题材
-    if (hotReasons?.length) {
-      const reasonMap = new Map();
-      for (const r of hotReasons.slice(0, 30)) {
-        const tags = (r.reason || "").split(/[,，、]/).map(t => t.trim()).filter(Boolean);
-        for (const t of tags) reasonMap.set(t, (reasonMap.get(t) || 0) + 1);
-      }
-      report.market.hotTopics = [...reasonMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([t, n]) => ({ topic: t, count: n }));
-    }
-    log(`  情绪: ${report.market.sentiment} | 涨跌比: ${report.market.advDecRatio} | 北向: ${report.market.northbound?.total ?? "?"}亿`);
-  } catch (e) { log("  大盘数据失败:", e.message); }
-
-  // ── 2. 持仓行情 ──────────────────────────────────
-  log("2/3 持仓数据...");
+  // ── 2. 持仓行情 + K线分析 ────────────────────────────
+  log(`2/3 持仓分析 (${PORTFOLIO.length}只)...`);
   const codes = PORTFOLIO.map(p => p.code);
-  if (!codes.length) {
-    log("  暂无持仓数据，请先在 portfolio.json 添加股票");
-  }
-  let quotes = {};
-  try {
-    quotes = await m.tencentQuote(codes);
-  } catch (e) { log("  行情获取失败:", e.message); }
 
-  // 逐个拉K线 + 龙虎榜 + 新闻
+  // 批量取行情
+  const quotes = await fetchQuotes(codes);
+  log(`  行情获取: ${Object.keys(quotes).length}/${codes.length} 只`);
+
   const holdings = [];
   for (const p of PORTFOLIO) {
     process.stderr.write(".");
     const q = quotes[p.code];
-    if (!q) { holdings.push({ ...p, error: "行情获取失败" }); continue; }
+    const h = {
+      code: p.code, name: p.name, quoteTime: now,
+      price: q?.price || null,
+      changePct: q?.changePct || null,
+      pe: q?.peTtm || null,
+      pb: q?.pb || null,
+      mcap: q?.mcapYi || null,
+      turnover: q?.turnoverPct || null,
+      amount: q?.amountWan || null,
+      high: q?.high || null,
+      low: q?.low || null,
+      open: q?.open || null,
+      prevClose: q?.prevClose || null,
+    };
 
-    const h = { code: p.code, name: q.name, price: q.price, changePct: q.changePct, pe: q.peTtm, pb: q.pb, mcap: q.mcapYi, turnover: q.turnoverPct, amount: q.amountWan };
-
-    // K线
+    // K线分析
     try {
       const rows = await fetchKLine(p.code);
       h.kline = analyzeKLine(rows);
     } catch { /* skip */ }
 
-    // 资金流向（近120日）
-    try {
-      const flows = await m.stockFundFlow120d(p.code);
-      if (flows?.length) {
-        const sum = (arr, key, n) => arr.slice(-n).reduce((s, f) => s + (f[key] || 0), 0);
-        h.fundFlow = {
-          today: flows[flows.length - 1],
-          main3d: sum(flows, 'mainNet', 3),
-          main5d: sum(flows, 'mainNet', 5),
-          main10d: sum(flows, 'mainNet', 10),
-          main20d: sum(flows, 'mainNet', 20),
-        };
-        let consDays = 0;
-        for (let i = flows.length - 1; i >= 0; i--) {
-          if ((flows[i].mainNet > 0) === (flows[flows.length - 1].mainNet > 0)) consDays++;
-          else break;
-        }
-        h.fundFlow.consDays = consDays;
-        h.fundFlow.consDir = flows[flows.length - 1].mainNet > 0 ? '流入' : '流出';
-      }
-    } catch { /* skip */ }
+    // 综合判断
+    h.judgment = judge(h);
 
-    // 龙虎榜（近30天）
-    try {
-      const dt = await m.dragonTigerBoard(p.code, today, 30);
-      if (dt?.records?.length) {
-        const allSeats = [
-          ...(dt.seats?.buy || []).map(s => ({ ...s, side: "buy" })),
-          ...(dt.seats?.sell || []).map(s => ({ ...s, side: "sell" })),
-        ];
-        h.dragonTiger = {
-          count: dt.records.length,
-          latest: dt.records.slice(0, 3).map(r => ({ date: r.date, reason: r.reason, netBuy: r.netBuy, turnover: r.turnover })),
-          seats: allSeats,
-          institution: dt.institution || null,
-        };
-      }
-    } catch { /* skip */ }
-
-    // 概念板块
-    try {
-      const cb = await m.eastmoneyConceptBlocks(p.code);
-      if (cb?.conceptTags?.length) {
-        h.conceptTags = cb.conceptTags.slice(0, 6);
-        h.mainSector = (cb.boards || [])[0];
-      }
-    } catch { /* skip */ }
-
-    // 近期新闻
-    try {
-      const news = await m.eastmoneyStockNews(p.code, 3);
-      if (news?.length) {
-        h.recentNews = news.slice(0, 2).map(n => ({ title: n.title || "", date: (n.time || "").slice(0, 10), source: n.source || "", url: n.url || "" }));
-      }
-    } catch { /* skip */ }
-
-    // 研报（最新5份）
-    try {
-      const reports = await m.eastmoneyReports(p.code, 1);
-      if (reports?.length) {
-        const recent = reports
-          .filter(r => r.predictThisYearEps || r.predictNextYearEps)
-          .slice(0, 5)
-          .map(r => ({
-            date: (r.publishDate || "").slice(0, 10),
-            org: r.orgSName || "",
-            rating: r.emRatingName || "",
-            eps1: r.predictThisYearEps ? +r.predictThisYearEps : null,
-            eps2: r.predictNextYearEps ? +r.predictNextYearEps : null,
-            eps3: r.predictNextTwoYearEps ? +r.predictNextTwoYearEps : null,
-            targetPrice: r.indvAimPriceT ? +r.indvAimPriceT : null,
-          }));
-        if (recent.length) {
-          // 平均目标价
-          const targets = recent.filter(r => r.targetPrice).map(r => r.targetPrice);
-          const avgEps1 = recent.filter(r => r.eps1).reduce((s, r) => s + r.eps1, 0) / (recent.filter(r => r.eps1).length || 1);
-          const avgEps2 = recent.filter(r => r.eps2).reduce((s, r) => s + r.eps2, 0) / (recent.filter(r => r.eps2).length || 1);
-          h.reports = {
-            items: recent,
-            avgTarget: targets.length ? +(targets.reduce((a, b) => a + b, 0) / targets.length).toFixed(2) : null,
-            highTarget: targets.length ? Math.max(...targets) : null,
-            lowTarget: targets.length ? Math.min(...targets) : null,
-            avgEps1: +avgEps1.toFixed(2),
-            avgEps2: +avgEps2.toFixed(2),
-            consensusRating: recent[0]?.rating || "",
-          };
-        }
-      }
-    } catch { /* skip */ }
-
-    await delay(200); // 东财限流
+    await delay(80);
     holdings.push(h);
   }
   process.stderr.write("\n");
@@ -236,37 +247,37 @@ async function main() {
   holdings.sort((a, b) => (b.changePct || 0) - (a.changePct || 0));
   report.holdings = holdings;
 
-  // ── 3. 持仓龙虎榜汇总 ─────────────────────────────
-  const dtHoldings = holdings.filter(h => h.dragonTiger);
-  if (dtHoldings.length) {
-    report.dragonAlert = dtHoldings.map(h => ({
-      code: h.code, name: h.name,
-      count: h.dragonTiger.count,
-      latest: h.dragonTiger.latest,
-      seats: h.dragonTiger.seats,
-      institution: h.dragonTiger.institution,
-    }));
-    log(`  持仓龙虎榜: ${dtHoldings.length}只近期上榜`);
-  }
+  // ── 3. 统计 ──────────────────────────────────────────
+  const validHoldings = holdings.filter(h => h.price != null);
+  const upCount = validHoldings.filter(h => h.changePct > 0).length;
+  const downCount = validHoldings.filter(h => h.changePct < 0).length;
+  const avgChg = validHoldings.length ? (validHoldings.reduce((s, h) => s + (h.changePct || 0), 0) / validHoldings.length) : 0;
+  const totalMcap = validHoldings.reduce((s, h) => s + (h.mcap || 0), 0);
+  const bullCount = validHoldings.filter(h => h.judgment?.verdict === "偏多").length;
+  const bearCount = validHoldings.filter(h => h.judgment?.verdict === "偏空").length;
 
-  // 持仓统计
-  const upCount = holdings.filter(h => h.changePct > 0).length;
-  const downCount = holdings.filter(h => h.changePct < 0).length;
-  const avgChg = holdings.length ? (holdings.reduce((s, h) => s + (h.changePct || 0), 0) / holdings.length) : 0;
-  const totalMcap = holdings.reduce((s, h) => s + (h.mcap || 0), 0);
   report.summary = {
-    total: holdings.length,
+    total: holdings.length, valid: validHoldings.length,
     up: upCount, down: downCount,
     avgChg: fmt(avgChg, 2),
     totalMcap: fmt(totalMcap, 0),
-    topGainer: holdings[0] ? `${holdings[0].name} +${fmt(holdings[0].changePct)}%` : "-",
-    topLoser: holdings[holdings.length - 1] ? `${holdings[holdings.length - 1].name} ${fmt(holdings[holdings.length - 1].changePct)}%` : "-",
+    bullCount, bearCount,
+    topGainer: validHoldings[0] ? `${validHoldings[0].name} +${fmt(validHoldings[0].changePct)}%` : "-",
+    topLoser: validHoldings[validHoldings.length - 1] ? `${validHoldings[validHoldings.length - 1].name} ${fmt(validHoldings[validHoldings.length - 1].changePct)}%` : "-",
   };
 
   log(`3/3 输出...`);
-  log(`  持仓: ${upCount}涨${downCount}跌 | 均涨幅: ${report.summary.avgChg}% | 总市值: ${report.summary.totalMcap}亿`);
+  log(`  持仓: ${upCount}涨${downCount}跌 | 均涨幅: ${report.summary.avgChg}% | 偏多${bullCount} 偏空${bearCount}`);
+  log(`  总市值: ${report.summary.totalMcap}亿`);
 
-  // ── 输出 ──────────────────────────────────────────
+  // 逐只打印
+  for (const h of validHoldings) {
+    const arrow = h.changePct >= 0 ? "↑" : "↓";
+    const j = h.judgment;
+    log(`  ${h.code} ${h.name} ${h.price} ${arrow}${fmt(h.changePct)}% | ${j?.verdict || "?"} | ${j?.summary || ""}`);
+  }
+
+  // ── 输出 ──────────────────────────────────────────────
   if (!existsSync(OUT)) mkdirSync(OUT, { recursive: true });
   const outFile = join(OUT, `review-${today}.json`);
   writeFileSync(outFile, JSON.stringify(report, null, 2), "utf-8");

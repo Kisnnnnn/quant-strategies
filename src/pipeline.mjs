@@ -125,6 +125,7 @@ export async function runStrategy(strategyName, cfg) {
   // Step 2: 批量行情（带缓存）
   log("Step 2/6: 获取行情数据...");
   const quotes = await fetchBatchQuotes(codes);
+  const quoteTime = new Date().toLocaleString("zh-CN", { hour12: false });
 
   // Step 3: 股票池过滤
   log("Step 3/6: 过滤股票池...");
@@ -168,7 +169,7 @@ export async function runStrategy(strategyName, cfg) {
     } else if (strategyName === "dragon-reverse") {
       signal = generateDragonSignals(stock, ind, stratCfg, marketCtx);
     }
-    if (signal) results.push(signal);
+    if (signal) { signal.quoteTime = quoteTime; results.push(signal); }
     scanned++;
     if (scanned % 300 === 0) process.stderr.write(`.${scanned}`);
   }

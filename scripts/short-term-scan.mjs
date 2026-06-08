@@ -494,6 +494,7 @@ async function main() {
           inHotTopic: hotTopics.some(t => (s.reason || "").includes(t)),
           sectorSupport: 0,
           consecutiveDays: 0,
+          quoteTime: new Date().toLocaleString("zh-CN", { hour12: false }),
         };
 
         // 连板天数
@@ -606,6 +607,7 @@ async function main() {
     sentiment: market,
     results: results.map(r => ({
       code: r.code, name: r.name, price: r.price,
+      quoteTime: r.quoteTime,
       changePct: r.changePct, pe: r.pe, mcap: r.mcap,
       turnover: r.turnover, reason: r.reason,
       score: r.score, action: r.action, signals: r.signals,
@@ -631,6 +633,13 @@ async function main() {
   const outFile = join(OUT, `short-term-${today}.json`);
   writeFileSync(outFile, JSON.stringify(report, null, 2), "utf-8");
   log(`\n5/5 短线信号报告: ${outFile}`);
+
+  // 自动归档到 history/（供回测使用）
+  const histDir = join(PROJECT, "history");
+  if (!existsSync(histDir)) mkdirSync(histDir, { recursive: true });
+  writeFileSync(join(histDir, `${today}.json`), JSON.stringify(report, null, 2), "utf-8");
+  log(`  历史快照已归档: history/${today}.json`);
+
   log(`${"=".repeat(60)}\n`);
 }
 

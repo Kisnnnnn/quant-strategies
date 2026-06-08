@@ -1,0 +1,78 @@
+{
+  "strategy": {
+    "name": "serenity",
+    "display_name": "供应链卡点分析",
+    "version": "1.0.0"
+  },
+
+  "criteria": {
+    "weights": {
+      "monopoly_moat": 0.20,
+      "small_mcap_vs_tam": 0.18,
+      "designed_in": 0.12,
+      "certification_cycle": 0.12,
+      "balance_sheet": 0.10,
+      "supply_demand": 0.08,
+      "policy_moat": 0.08,
+      "institutional_low": 0.06,
+      "valuation_margin": 0.06
+    },
+
+    "thresholds": {
+      "max_mcap_yi": 200,
+      "max_fwd_pe": 100,
+      "min_gross_margin": 0.25,
+      "max_institutional_pct": 40,
+      "max_single_customer_pct": 40
+    },
+
+    "valuation": {
+      "target_pe": 30,
+      "max_peg": 1.5,
+      "bear_discount": 0.5,
+      "bull_premium": 1.5
+    }
+  },
+
+  "red_flags": {
+    "hard_rejects": [
+      "ST",
+      "unlimited_atm"
+    ],
+    "warnings": [
+      "single_customer",
+      "toxic_debt",
+      "zero_revenue",
+      "china_exposure_us",
+      "tech_too_far",
+      "pure_software",
+      "large_mcap_no_asymmetry",
+      "brand_fake_partnership",
+      "hot_money_only",
+      "management_integrity",
+      "tech_route_risk"
+    ],
+    "a_share_specific": [
+      "hot_money_chasing",
+      "competitive_fragmentation",
+      "low_barrier_capacity",
+      "no_institutional_attention"
+    ]
+  },
+
+  "supply_chain": {
+    "default_super_cycle": "AI基础设施建设",
+    "default_horizon_months": 12,
+    "default_region": "全球",
+    "max_layers": 9,
+    "required_layers": 6
+  },
+
+  "output": {
+    "max_results": 15,
+    "include_valuation": true,
+    "include_supply_chain_map": true,
+    "include_red_flags": true,
+    "format": "json"
+  }
+}

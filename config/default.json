@@ -2,7 +2,7 @@
   "project": {
     "name": "celue",
     "version": "1.0.0",
-    "active_strategies": ["band-dip", "dragon-reverse"]
+    "active_strategies": ["serenity", "band-dip", "dragon-reverse"]
   },
 
   "data": {
