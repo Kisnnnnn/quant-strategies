@@ -1,0 +1,25 @@
+scripts/short-term-scan.mjs
+  s_f9598046b19a90::t_d39e2b25189ad5 632
+  s_f9598046b19a90::t_6fb01527f505f8 197-201
+scripts/05-review.mjs
+  s_f9598046b19a90::t_0ec77fd79ae6c6 194-195,197-221
+  s_f9598046b19a90::t_9d0dfa6f4ea17d 2,11,15-19
+history/2026-06-08.json
+  s_f9598046b19a90::t_be090793f61aed 3,28,39-42,50,54,99,108,112,157,166,170,215,224,228,273,279-288,302-305,307,311-315,317-318,322,324-328,330,336-344,359-362,364,368-372,374-376,379,381-385,387,396,400,444,453,457,500,509,513,556-612,621,625,670,679,683,725,734,738,783,792,796,837
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "251f6587b1e19fec3b298edcac2581f9faf049fa",
+  "prompts": {},
+  "sessions": {
+    "s_f9598046b19a90": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "578553d9-ce37-48c0-9b32-c107ba619ef9",
+        "model": "deepseek-v4-pro"
+      },
+      "human_author": "kaixin.yuan <kaixin.yuan@ly.com>"
+    }
+  }
+}
